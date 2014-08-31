@@ -3,17 +3,22 @@ package antiFace.rwoodley.org.antiface;
 import android.app.ActionBar;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.drawable.BitmapDrawable;
 import android.hardware.Camera;
 import android.hardware.Camera.Face;
 import android.hardware.Camera.FaceDetectionListener;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.DisplayMetrics;
@@ -45,7 +50,8 @@ public class MainActivity extends Activity {
 
     private SurfaceView _surfaceView;
     ImageView _imageView = null;
-    private Handler _processImageHandler;
+    //private Handler _handler;
+    private PostUploadHandler _postUploadHandler;
     private Bitmap _postProcessedBmp;
     private boolean _firstTime = true;  // first time this instance.
     private boolean _backgroundThreadShouldRun = true;
@@ -58,17 +64,22 @@ public class MainActivity extends Activity {
             setContentView(R.layout.activity_main);
             _that = this;
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+                getActionBar().setHomeButtonEnabled(true);
+            }
             // landscape mode is the only thing that works out of the box for camera preview it seems.
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
             DisplayMetrics metrics = getResources().getDisplayMetrics();
             Log.e("onCreate", "Density is " + metrics.density);
 
-            _processImageHandler = new Handler();
+            Handler handler = new Handler();
+            _postUploadHandler = new PostUploadHandler(this, handler);
 
             _surfaceView = (SurfaceView) findViewById(R.id.cameraSurface);
             _surfaceView.getHolder().addCallback(_surfaceHolderCallback);
             //addContentView(new DrawingView(this), new ActionBar.LayoutParams(320,240));
+            new Thread(_imageUploader).start();
 
             _imageView = (ImageView) findViewById(R.id.processedImage);
             Log.w("onCreate", "imageView WxH = " + _imageView.getWidth() + "," + _imageView.getHeight());
@@ -178,12 +189,20 @@ public class MainActivity extends Activity {
             Bitmap bmp = Bitmap.createBitmap(cameraBmp, outRect.left, outRect.top, outRect.width(), outRect.height(), m, false);
 
             _imageView.setImageBitmap(bmp);
-        }
+
+            // now make greyscale. Note: this will display a greyscale, but won't allow you to extract a grayscale for later use.
+            // see toGreyscale() in Uploader.java for where I've done that.
+            ColorMatrix matrix = new ColorMatrix();
+            matrix.setSaturation(0);
+
+            ColorMatrixColorFilter filter = new ColorMatrixColorFilter(matrix);
+            _imageView.setColorFilter(filter);
+       }
     };
     private void initBitmap() {
-        Log.w("initBitmap 1", "_imageView WxH = " + _imageView.getWidth() + "," + _imageView.getHeight());
+//        Log.w("initBitmap 1", "_imageView WxH = " + _imageView.getWidth() + "," + _imageView.getHeight());
         Bitmap postProcessedBmp = Bitmap.createBitmap(_imageView.getWidth(), _imageView.getHeight(), Bitmap.Config.RGB_565);
-        Log.w(TAG, "******in initBitmap(),w = " + _imageView.getWidth() + ", h = " + _imageView.getHeight());
+//        Log.w(TAG, "******in initBitmap(),w = " + _imageView.getWidth() + ", h = " + _imageView.getHeight());
         for(int i = 0; i < postProcessedBmp.getHeight(); i++){
             for(int j = 0; j < postProcessedBmp.getWidth(); j++){
                 int pixel = postProcessedBmp.getPixel(j, i);
@@ -195,8 +214,8 @@ public class MainActivity extends Activity {
             }
         }
         _imageView.setImageBitmap(postProcessedBmp);
-        Log.w("initBitmap 2", "_imageView WxH = " + _imageView.getWidth() + "," + _imageView.getHeight());
-        Log.w(TAG, "******in initBitmap(),w = " + _imageView.getWidth() + ", h = " + _imageView.getHeight());
+//        Log.w("initBitmap 2", "_imageView WxH = " + _imageView.getWidth() + "," + _imageView.getHeight());
+//        Log.w(TAG, "******in initBitmap(),w = " + _imageView.getWidth() + ", h = " + _imageView.getHeight());
     }
     public void onStop() {
         super.onStop();  // Always call the superclass method first
@@ -218,18 +237,20 @@ public class MainActivity extends Activity {
 //        if (id == R.id.action_settings) {
 //            return true;
 //        }
-//        if (item.getTitle().equals("Choose Color")) {
-//            new ColorPickerDialog(this, this, "BLAH", _color1, _color2)
-//                    .show();
-//            return true;
-//        }
+        if (item.getTitle().equals(getString(R.string.UploadFaceLabel))) {
+            _postUploadHandler.setUploadButton(item);
+            Bitmap bitmap = ((BitmapDrawable)_imageView.getDrawable()).getBitmap();
+            _uploadableBitmap = bitmap.copy(bitmap.getConfig(), false);
+            item.setTitle(getString(R.string.UploadingLabel));
+            return true;
+        }
         return super.onOptionsItemSelected(item);
     }
     private Camera.PictureCallback _PictureCallback = new Camera.PictureCallback() {
 
         @Override
         public void onPictureTaken(byte[] data, Camera camera) {
-            Log.e("onPictureTaken", "!!!!!in here!!!!!");
+//            Log.e("onPictureTaken", "!!!!!Picture Take!!!!!");
             if (!_backgroundThreadShouldRun) return;
             synchronized (processorLocker) {
                 _pictureData = data;
@@ -242,15 +263,6 @@ public class MainActivity extends Activity {
     public ImageView getimageView() {
         return _imageView;
     }
-    private Runnable postProcessedBinaryImage = new Runnable() {
-        @Override
-        public void run() {
-            if (_backgroundThreadShouldRun) {
-                Log.w(TAG, "******setting new bitmap(), w = " + getimageView().getWidth() + ", h = " + getimageView().getHeight());
-                getimageView().setImageBitmap(_postProcessedBmp);
-            }
-        }
-    };
     private int getRotation() {
         int rotation = _imageView.getDisplay().getRotation();
         String mess = "";
@@ -262,7 +274,7 @@ public class MainActivity extends Activity {
             mess = "Surface.ROTATION_180";
         else if (rotation == Surface.ROTATION_270)
             mess = "Surface.ROTATION_270";
-        Log.w("getRotation()", mess);
+//        Log.w("getRotation()", mess);
         return rotation;
     }
     private double getRotationAsDegrees() {
@@ -281,18 +293,18 @@ public class MainActivity extends Activity {
         Bitmap cameraBmp;
         synchronized (processorLocker) {
             if (_pictureData == null) return null;
-            Log.w(TAG, "==== got picture data");
+//            Log.w(TAG, "==== got picture data");
             BitmapFactory.Options opts = new BitmapFactory.Options();
             opts.inJustDecodeBounds = true;
             BitmapFactory.decodeByteArray(_pictureData, 0, _pictureData.length, opts);
-            Log.w("binarizeImage", opts.outWidth + ", " + opts.outHeight);
+//            Log.w("binarizeImage", opts.outWidth + ", " + opts.outHeight);
             _pictureDataW = opts.outWidth;
             _pictureDataH = opts.outHeight;
             //opts.inSampleSize = opts.outWidth/_imageView.getWidth();
             opts.inJustDecodeBounds = false;
-            Log.w(TAG, "inSampleSize = " + opts.inSampleSize);
+//            Log.w(TAG, "inSampleSize = " + opts.inSampleSize);
             cameraBmp = BitmapFactory.decodeByteArray(_pictureData, 0, _pictureData.length, opts);
-            Log.w(TAG, "==== begin process, w = " + cameraBmp.getWidth() + ", h = " + cameraBmp.getHeight());
+//            Log.w(TAG, "==== begin process, w = " + cameraBmp.getWidth() + ", h = " + cameraBmp.getHeight());
 
             _pictureData = null;
             _Camera.takePicture(null, null, _PictureCallback);
@@ -300,6 +312,34 @@ public class MainActivity extends Activity {
         }
         return cameraBmp;
     }
+    Bitmap _uploadableBitmap = null;
+    private Runnable _imageUploader = new Runnable() {
+
+        @Override
+        public void run() {
+            boolean firstTime = true;
+
+            try {
+                Log.w("imageUploaderThread", "Started background thread id:" + android.os.Process.myTid());
+                Thread.currentThread().setName("ImageUploader" + android.os.Process.myTid());
+                while (_backgroundThreadShouldRun) {
+                    if (_uploadableBitmap != null) {
+                        Log.w("imageUploaderThread", "Uploading...");
+                        String url = Uploader.Upload(_that, _uploadableBitmap);
+                        _uploadableBitmap = null;
+                        _postUploadHandler.handlePostUploadTasks(getString(R.string.UploadFaceLabel), url);
+                    }
+
+                    Thread.sleep(500);
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } finally {
+                Log.w("imageUploaderThread", "Ended background thread id:" + android.os.Process.myTid());
+            }
+        }
+    };
+
     // from: http://android-er.blogspot.com/2012/04/android-4-face-detection-display.html
     private class DrawingView extends View {
 
@@ -336,7 +376,7 @@ public class MainActivity extends Activity {
         protected void onDraw(Canvas canvas) {
             if (!_haveFace) return;
             canvas.drawRect(_x, _y, _x + _w, _y + _h, _drawingPaint);
-            Log.e("onDraw", "---drawing view = " + getLeft() + "," + getTop());
+//            Log.e("onDraw", "---drawing view = " + getLeft() + "," + getTop());
 
         }
     }

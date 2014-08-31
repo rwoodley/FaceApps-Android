@@ -41,7 +41,9 @@ public class WebActivity extends Activity {
         WebSettings w = myWebView.getSettings();
         w.setPluginState(WebSettings.PluginState.ON);
         myWebView.loadUrl(getIntent().getStringExtra("url"));
-        w.setUseWideViewPort(true);
+//        myWebView.loadUrl("http://rwoodley.org/MyContent/x.html");
+//        w.setUseWideViewPort(true);
+        w.setLoadWithOverviewMode(true);
         this.setTitle(myWebView.getTitle());
     }
 

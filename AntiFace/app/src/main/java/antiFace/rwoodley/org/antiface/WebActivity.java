@@ -18,6 +18,7 @@ public class WebActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        this.getActionBar().setIcon(R.drawable.round72);
 
         //this.getActionBar().setIcon(R.drawable.curiouschimp);
         getActionBar().setDisplayShowHomeEnabled(true);

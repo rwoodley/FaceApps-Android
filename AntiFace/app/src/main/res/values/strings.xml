@@ -4,8 +4,11 @@
     <string name="app_name">AntiFace</string>
     <string name="hello_world">Hello world!</string>
     <string name="action_settings">Settings</string>
+    <string name="title_activity_web">WebActivity</string>
+
+    <string name="InitializingLabel">Initializing...</string>
+    <string name="ScanningLabel">Scanning for Face...</string>
     <string name="UploadingLabel">Uploading...</string>
     <string name="UploadFaceLabel">Upload this face.</string>
-    <string name="title_activity_web">WebActivity</string>
 
 </resources>

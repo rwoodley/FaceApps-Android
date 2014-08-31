@@ -8,23 +8,25 @@
     android:paddingBottom="2dp"
     android:background="#ffff0000"
     tools:context=".MainActivity">
-    <ImageView
-        android:id="@+id/processedImage"
-        android:layout_width="320px"
-        android:layout_height="240px"
-        android:layout_marginRight="5dp"
-        android:contentDescription="@string/app_name"/>
     <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
         android:id="@+id/frameLayout"
-        android:layout_height="120px"
-        android:layout_width="160px"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="match_parent"
     >
         <SurfaceView
             android:id="@+id/cameraSurface"
-            android:layout_width="160px"
-            android:layout_height="120px"
+            android:layout_height="wrap_content"
+            android:layout_width="fill_parent"
             android:layout_marginLeft="5dp"
-            android:layout_toRightOf="@id/processedImage"/>
-        </FrameLayout>
+            />
+    </FrameLayout>
+    <ImageView
+        android:id="@+id/processedImage"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="match_parent"
+        android:layout_marginRight="5dp"
+        android:contentDescription="@string/app_name"/>
 
 </LinearLayout>

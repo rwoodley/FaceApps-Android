@@ -11,13 +11,16 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.YuvImage;
 import android.graphics.drawable.BitmapDrawable;
 import android.hardware.Camera;
 import android.hardware.Camera.Face;
 import android.hardware.Camera.FaceDetectionListener;
+import android.media.FaceDetector;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -33,9 +36,12 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.Toast;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-
+import java.util.List;
 
 
 public class MainActivity extends Activity {
@@ -47,6 +53,7 @@ public class MainActivity extends Activity {
     private Object processorLocker = new Object();
     private Camera _Camera = null;
     DrawingView _drawingView;
+    private boolean _faceDetectionRunning = false;
 
     private SurfaceView _surfaceView;
     ImageView _imageView = null;
@@ -56,6 +63,8 @@ public class MainActivity extends Activity {
     private boolean _firstTime = true;  // first time this instance.
     private boolean _backgroundThreadShouldRun = true;
     private MainActivity _that;
+    private MenuItem _button;
+    double _dontCutOffChinsFactor = .3;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,6 +72,7 @@ public class MainActivity extends Activity {
             super.onCreate(savedInstanceState);
             setContentView(R.layout.activity_main);
             _that = this;
+            this.getActionBar().setIcon(R.drawable.round72);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
                 getActionBar().setHomeButtonEnabled(true);
@@ -88,12 +98,27 @@ public class MainActivity extends Activity {
                 @Override
                 public void onGlobalLayout() {
                     if (_firstTime) {
+                        // The screen is fully drawn at this point, do some initialization.
+
                         Log.w("onCreate", "_imageView WxH = " + _imageView.getWidth() + "," + _imageView.getHeight());
                         initBitmap();
-                        _drawingView = new DrawingView(_that);
                         FrameLayout frmLayout = (FrameLayout)findViewById(R.id.frameLayout);
+
+                        FrameLayout.LayoutParams layoutParamsDrawing
+                                = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT);
+                        _drawingView = new DrawingView(_that);
                         frmLayout.addView(_drawingView);
                         Log.e(TAG, "drawing view = " + _drawingView.getLeft() + "," + _drawingView.getTop());
+
+                        // now make imageView a greyscale.
+                        // Note: this will display a greyscale, but won't allow you to extract a grayscale for later use.
+                        // see toGreyscale() in Uploader.java for where I've done that.
+                        ColorMatrix matrix = new ColorMatrix();
+                        matrix.setSaturation(0);
+
+                        ColorMatrixColorFilter filter = new ColorMatrixColorFilter(matrix);
+                        _imageView.setColorFilter(filter);
                     }
                     _firstTime = false;
                 }
@@ -110,6 +135,7 @@ public class MainActivity extends Activity {
             try {
                 _Camera.stopPreview();
                 _Camera.stopFaceDetection();
+                _faceDetectionRunning = false;
             }
             catch (Exception e) {
             }
@@ -124,7 +150,17 @@ public class MainActivity extends Activity {
             Log.w("_surfaceView.getHolder()", "-----surfaceCreated");
             try {
                 _Camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
+
+                _Camera.setFaceDetectionListener(faceDetectionListener);
                 _Camera.setPreviewDisplay(holder);
+
+                _Camera.startPreview();
+                Log.w("surfaceCreated", "max num faces = " + _Camera.getParameters().getMaxNumDetectedFaces());
+                _Camera.startFaceDetection();
+                if (_button != null) _button.setTitle(getString(R.string.ScanningLabel));
+
+                //setTitle(getString(R.string.ScanningLabel));
+                _faceDetectionRunning = true;
             } catch (IOException exception) {
                 _Camera.release();
                 _Camera = null;
@@ -134,21 +170,87 @@ public class MainActivity extends Activity {
         @Override
         public void surfaceChanged(SurfaceHolder holder, int format, int width,
                                    int height) {
-            Log.w("_surfaceView.getHolder()", "-----surfaceChanged");
-            _Camera.setFaceDetectionListener(faceDetectionListener);
+            Log.w("surfaceChanged", "-----surfaceChanged");
+
+            _Camera.stopPreview();
+            _faceDetectionRunning = false;
+
+            // Size changes must be in surfaceChanged(), per: http://developer.android.com/guide/topics/media/camera.html#check-camera-features
+
+            // from: http://stackoverflow.com/questions/17804309/android-camera-preview-wrong-aspect-ratio
+            Camera.Size size = _Camera.getParameters().getPreviewSize();
+
+            //landscape
+            View imageview = (ImageView) findViewById(R.id.processedImage);
+            Log.w("surfaceChanged", "imageView - wxh = " + imageview.getWidth() + "x" + imageview.getHeight() );
+            View preview = (FrameLayout) findViewById(R.id.frameLayout);
+            Log.w("surfaceChanged", "preview - wxh = " + preview.getWidth() + "x" + preview.getHeight() );
+
+//            float ratio = (float)size.width/size.height;
+//            int new_width=0, new_height=0;
+//            new_width = preview.getWidth();
+//            new_height = Math.round(preview.getWidth()/ratio);  // always adjust width.
+//            preview.setLayoutParams(new LinearLayout.LayoutParams(new_width, new_height));
+
+            Camera.Parameters params = _Camera.getParameters();
+            params.set("orientation", "landscape");
+            Camera.Size optimalSize=getOptimalPreviewSize(params.getSupportedPreviewSizes(),  preview.getWidth(), preview.getHeight());
+            if (optimalSize != null) {
+                Log.w("surfaceChanged", "optimal - wxh = " + optimalSize.width + "x" + optimalSize.height);
+                preview.setLayoutParams(new LinearLayout.LayoutParams(optimalSize.width, optimalSize.height));
+            }
+            else
+                Log.w("surfaceChanged", "couldn't adjust aspect ratio. Sticking with default.");
+
+            try {
+                _Camera.setPreviewDisplay(holder);
+            }
+            catch (IOException e) {  }
             _Camera.startPreview();
+            Log.w("surfaceChanged", "max num faces = " + _Camera.getParameters().getMaxNumDetectedFaces());
             _Camera.startFaceDetection();
+            if (_button != null) _button.setTitle(getString(R.string.ScanningLabel));
+            _faceDetectionRunning = true;
             _Camera.takePicture(null, null, _PictureCallback);
         }
     };
-    private static boolean computeBounds(Rect in, Rect outr, int width, int height) {
+    private Camera.Size getOptimalPreviewSize(List<Camera.Size> sizes, int w, int h) {
+        final double ASPECT_TOLERANCE = 0.2;
+        double targetRatio = (double) w/h;
+
+        if (sizes==null) return null;
+
+        Camera.Size optimalSize = null;
+
+        double minDiff = Double.MAX_VALUE;
+
+//        int targetHeight = h;
+        int targetWidth = w;
+
+        // Find size
+        minDiff = Double.MAX_VALUE;
+        for (Camera.Size size : sizes) {
+            double ratio = (double) size.width / size.height;
+            Log.w("getOptimalPreviewSize", "w,h,tolerance = " + size.width + "x" + size.height + ", " + Math.abs(ratio - targetRatio));
+            if (Math.abs(ratio - targetRatio) > ASPECT_TOLERANCE) continue;
+            if (size.width <= targetWidth) {
+                Log.w("getOptimalPreviewSize", "Found! " + size.width + "x" + size.height);
+                if (minDiff > targetWidth - size.width) {
+                    minDiff = targetWidth - size.width;
+                    optimalSize = size;
+                }
+            }
+        }
+        return optimalSize;
+    }
+    private static boolean computeBounds(Rect in, Rect outr, int width, int height, double scaleFactor) {
         int x = (int) (((float) in.left + 1000.0)/2000.0 * width);
         int w = (int) ((float) in.width()/2000.0 * width);
         int y = (int) (((float) in.left + 1000.0)/2000.0 * height);
         int h = (int) ((float) in.height()/2000.0 * height);
         // make it 30% larger so we don't cut off chins
-        int deltaw = (int) (w *.3);
-        int deltah = (int) (h *.3);
+        int deltaw = (int) (w *scaleFactor);
+        int deltah = (int) (h *scaleFactor);
         w += deltaw;
         h += deltah;
         x -= deltaw/2;
@@ -177,7 +279,7 @@ public class MainActivity extends Activity {
             _drawingView.invalidate();
 
             Rect outRect = new Rect();
-            boolean stat = computeBounds(face.rect, outRect, _pictureDataW, _pictureDataH);
+            boolean stat = computeBounds(face.rect, outRect, _pictureDataW, _pictureDataH, _dontCutOffChinsFactor);
             if (!stat) return;
             Log.w("foundFace", "before x,y,w,h = " + face.rect.left +", " + face.rect.top +", " + face.rect.width() +", " + face.rect.height());
             Log.w("foundFace", "after x,y,w,h = " + outRect.left + "," + outRect.top + "," + outRect.width() + "," + outRect.height());
@@ -189,14 +291,8 @@ public class MainActivity extends Activity {
             Bitmap bmp = Bitmap.createBitmap(cameraBmp, outRect.left, outRect.top, outRect.width(), outRect.height(), m, false);
 
             _imageView.setImageBitmap(bmp);
-
-            // now make greyscale. Note: this will display a greyscale, but won't allow you to extract a grayscale for later use.
-            // see toGreyscale() in Uploader.java for where I've done that.
-            ColorMatrix matrix = new ColorMatrix();
-            matrix.setSaturation(0);
-
-            ColorMatrixColorFilter filter = new ColorMatrixColorFilter(matrix);
-            _imageView.setColorFilter(filter);
+            if (_button != null && _button.getTitle() != getString(R.string.UploadingLabel))
+                _button.setTitle(getString(R.string.UploadFaceLabel));
        }
     };
     private void initBitmap() {
@@ -228,6 +324,7 @@ public class MainActivity extends Activity {
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.main, menu);
+        _button = menu.getItem(0);
         return true;
     }
 
@@ -250,13 +347,22 @@ public class MainActivity extends Activity {
 
         @Override
         public void onPictureTaken(byte[] data, Camera camera) {
-//            Log.e("onPictureTaken", "!!!!!Picture Take!!!!!");
+            Log.e("onPictureTaken", "!!!!!Picture Taken!!!!!");
             if (!_backgroundThreadShouldRun) return;
             synchronized (processorLocker) {
                 _pictureData = data;
-//                _Camera.setFaceDetectionListener(faceDetectionListener);
+                _Camera.stopPreview();
+                try {
+                    _Camera.stopFaceDetection();
+                }
+                catch (RuntimeException e) { }
+
+                _Camera.setFaceDetectionListener(faceDetectionListener);
                 _Camera.startPreview();
                 _Camera.startFaceDetection();
+//                if (_button != null) _button.setTitle(getString(R.string.ScanningLabel));
+                _faceDetectionRunning = true;
+                _faceDetectionRunning = true;
             }
         }
     };
@@ -293,23 +399,27 @@ public class MainActivity extends Activity {
         Bitmap cameraBmp;
         synchronized (processorLocker) {
             if (_pictureData == null) return null;
-//            Log.w(TAG, "==== got picture data");
+            cameraBmp = getBitmapFromPictureData(_pictureData);
+            _pictureData = null;
+        }
+        _Camera.takePicture(null, null, _PictureCallback);
+        return cameraBmp;
+    }
+    private Bitmap getBitmapFromPictureData(byte[] pictureData) {
+        Bitmap cameraBmp;
+
             BitmapFactory.Options opts = new BitmapFactory.Options();
             opts.inJustDecodeBounds = true;
-            BitmapFactory.decodeByteArray(_pictureData, 0, _pictureData.length, opts);
-//            Log.w("binarizeImage", opts.outWidth + ", " + opts.outHeight);
+            BitmapFactory.decodeByteArray(pictureData, 0, pictureData.length, opts);
+            Log.w("binarizeImage", opts.outWidth + ", " + opts.outHeight);
             _pictureDataW = opts.outWidth;
             _pictureDataH = opts.outHeight;
-            //opts.inSampleSize = opts.outWidth/_imageView.getWidth();
-            opts.inJustDecodeBounds = false;
-//            Log.w(TAG, "inSampleSize = " + opts.inSampleSize);
-            cameraBmp = BitmapFactory.decodeByteArray(_pictureData, 0, _pictureData.length, opts);
-//            Log.w(TAG, "==== begin process, w = " + cameraBmp.getWidth() + ", h = " + cameraBmp.getHeight());
 
-            _pictureData = null;
-            _Camera.takePicture(null, null, _PictureCallback);
-//            takePic();
-        }
+            opts.inJustDecodeBounds = false;
+
+            cameraBmp = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.length, opts);
+            Log.w(TAG, "==== begin process, w = " + cameraBmp.getWidth() + ", h = " + cameraBmp.getHeight());
+
         return cameraBmp;
     }
     Bitmap _uploadableBitmap = null;
@@ -344,16 +454,22 @@ public class MainActivity extends Activity {
     private class DrawingView extends View {
 
         boolean _haveFace;
-        Paint _drawingPaint;
+        Paint _greenPaint;
+        Paint _redPaint;
         int _x, _y, _w, _h;
+        int _x1, _y1, _w1, _h1;
 
         public DrawingView(Context context) {
             super(context);
             _haveFace = false;
-            _drawingPaint = new Paint();
-            _drawingPaint.setColor(Color.GREEN);
-            _drawingPaint.setStyle(Paint.Style.STROKE);
-            _drawingPaint.setStrokeWidth(2);
+            _greenPaint = new Paint();
+            _greenPaint.setColor(Color.GREEN);
+            _greenPaint.setStyle(Paint.Style.STROKE);
+            _greenPaint.setStrokeWidth(2);
+            _redPaint = new Paint();
+            _redPaint.setColor(Color.RED);
+            _redPaint.setStyle(Paint.Style.STROKE);
+            _redPaint.setStrokeWidth(2);
         }
 
         public void setHaveFace(boolean h){
@@ -361,21 +477,27 @@ public class MainActivity extends Activity {
         }
         public void setFaceRect(Rect rect) {
             Rect outRect = new Rect();
-            _haveFace = MainActivity.computeBounds(rect, outRect, _surfaceView.getWidth(), _surfaceView.getHeight());
+            _haveFace = MainActivity.computeBounds(rect, outRect, _surfaceView.getWidth(), _surfaceView.getHeight(), _dontCutOffChinsFactor);
             if (_haveFace) {
                 _haveFace = true;
                 _x = _surfaceView.getWidth() - outRect.left - outRect.width();
                 _y = outRect.top;
                 _w = outRect.width();
                 _h = outRect.height();
-                Log.w("setFaceRect", "green box= x,y,w,h = " + _x + "," + _y + "," + _w + "," + _h);
+
+                MainActivity.computeBounds(rect, outRect, _surfaceView.getWidth(), _surfaceView.getHeight(), 0);
+                _x1 = _surfaceView.getWidth() - outRect.left - outRect.width();
+                _y1 = outRect.top;
+                _w1 = outRect.width();
+                _h1 = outRect.height();
             }
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
             if (!_haveFace) return;
-            canvas.drawRect(_x, _y, _x + _w, _y + _h, _drawingPaint);
+            canvas.drawRect(_x, _y, _x + _w, _y + _h, _greenPaint);
+            canvas.drawRect(_x1, _y1, _x1 + _w1, _y1 + _h1, _redPaint);
 //            Log.e("onDraw", "---drawing view = " + getLeft() + "," + getTop());
 
         }

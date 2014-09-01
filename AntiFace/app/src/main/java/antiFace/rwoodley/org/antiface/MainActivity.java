@@ -2,7 +2,10 @@ package antiFace.rwoodley.org.antiface;
 
 import android.app.ActionBar;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
@@ -335,13 +338,41 @@ public class MainActivity extends Activity {
 //            return true;
 //        }
         if (item.getTitle().equals(getString(R.string.UploadFaceLabel))) {
-            _postUploadHandler.setUploadButton(item);
-            Bitmap bitmap = ((BitmapDrawable)_imageView.getDrawable()).getBitmap();
-            _uploadableBitmap = bitmap.copy(bitmap.getConfig(), false);
-            item.setTitle(getString(R.string.UploadingLabel));
+            confirmAndUpload(item);
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+    private void confirmAndUpload(final MenuItem item) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setMessage(
+                "By clicking 'I agree' you consent to upload this photo to Facefield.org which will use it for art projects such as this one. By submitting a photograph, you (and any other individual depicted in the photograph) consent to such usage. All uploads are anonymous - we only upload your image and do not collect other identifying information."
+
+        ).setTitle("Agree Terms")
+                .setCancelable(false)
+                .setPositiveButton("I Agree",
+                        new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog,
+                                                int id) {
+                                initiateUpload(item);
+                            }
+                        }
+                )
+                .setNegativeButton("I Don't Agree",
+                        new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog,
+                                                int id) {        }
+                        }
+                );
+        AlertDialog alert = builder.create();
+        alert.show();
+    }
+    private void initiateUpload(MenuItem item) {
+        _postUploadHandler.setUploadButton(item);
+        Bitmap bitmap = ((BitmapDrawable)_imageView.getDrawable()).getBitmap();
+        _uploadableBitmap = bitmap.copy(bitmap.getConfig(), false);
+        item.setTitle(getString(R.string.UploadingLabel));
+
     }
     private Camera.PictureCallback _PictureCallback = new Camera.PictureCallback() {
 

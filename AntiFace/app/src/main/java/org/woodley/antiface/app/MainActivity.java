@@ -1,4 +1,4 @@
-package antiFace.rwoodley.org.antiface;
+package org.woodley.antiface.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -35,7 +35,6 @@ import android.widget.LinearLayout;
 
 import java.io.IOException;
 import java.util.List;
-
 
 public class MainActivity extends Activity {
     private static final String    TAG                 = "MainActivity";

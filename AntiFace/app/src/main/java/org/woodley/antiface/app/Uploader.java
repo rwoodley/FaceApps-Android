@@ -1,4 +1,4 @@
-package antiFace.rwoodley.org.antiface;
+package org.woodley.antiface.app;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -135,7 +135,7 @@ public class Uploader {
             outputStream.close();
 
             Log.w("uploader", "Uploaded with code: " + serverResponseCode + ", message = " + serverResponseMessage
-                    + ", url = " + connection.getURL() );
+                    + ", url = " + connection.getURL());
             return connection.getURL().toString();
         }
         catch (Exception ex)

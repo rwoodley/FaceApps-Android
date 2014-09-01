@@ -5,7 +5,7 @@ android {
     buildToolsVersion "20.0.0"
 
     defaultConfig {
-        applicationId "antiFace.rwoodley.org.antiface"
+        applicationId "org.woodley.antiface.app"
         minSdkVersion 17
         targetSdkVersion 20
         versionCode 1

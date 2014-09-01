@@ -1,4 +1,4 @@
-package antiFace.rwoodley.org.antiface;
+package org.woodley.antiface.app;
 
 import android.app.Activity;
 import android.content.Context;
@@ -10,8 +10,6 @@ import android.view.MenuItem;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-
-import antiFace.rwoodley.org.antiface.R;
 
 public class WebActivity extends Activity {
 

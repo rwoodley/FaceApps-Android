@@ -1,4 +1,4 @@
-package antiFace.rwoodley.org.antiface;
+package org.woodley.antiface.app;
 
 import android.content.Context;
 import android.content.Intent;

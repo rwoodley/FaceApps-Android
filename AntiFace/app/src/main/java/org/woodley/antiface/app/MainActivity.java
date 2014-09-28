@@ -208,7 +208,7 @@ public class MainActivity extends Activity {
         }
     };
     private Camera.Size getOptimalPreviewSize(List<Camera.Size> sizes, int w, int h) {
-        final double ASPECT_TOLERANCE = 0.2;
+        final double ASPECT_TOLERANCE = 0.25;
         double targetRatio = (double) w/h;
 
         if (sizes==null) return null;
@@ -217,16 +217,16 @@ public class MainActivity extends Activity {
 
         double minDiff = Double.MAX_VALUE;
 
+        //int targetWidth = (int) ((float)w*getResources().getDisplayMetrics().density);
         int targetWidth = w;
-
         // Find size
         minDiff = Double.MAX_VALUE;
         for (Camera.Size size : sizes) {
             double ratio = (double) size.width / size.height;
-//            Log.w("getOptimalPreviewSize", "w,h,tolerance = " + size.width + "x" + size.height + ", " + Math.abs(ratio - targetRatio));
+            Log.w("getOptimalPreviewSize", "w,h,tolerance = " + size.width + "x" + size.height + ", " + Math.abs(ratio - targetRatio));
             if (Math.abs(ratio - targetRatio) > ASPECT_TOLERANCE) continue;
             if (size.width <= targetWidth) {
-//                Log.w("getOptimalPreviewSize", "Found! " + size.width + "x" + size.height);
+                Log.w("getOptimalPreviewSize", "Found! " + size.width + "x" + size.height);
                 if (minDiff > targetWidth - size.width) {
                     minDiff = targetWidth - size.width;
                     optimalSize = size;
